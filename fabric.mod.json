@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "enderpearlcatch",
+  "version": "${version}",
+  "name": "Ender Pearl Catch Timer",
+  "description": "HUD timer for Ender Pearl and Wind Charge catch practice.",
+  "environment": "client",
+  "entrypoints": { "client": ["com.elstrico.pearlcatch.PearlCatchClient"] },
+  "depends": { "fabricloader": ">=0.18.4", "minecraft": "1.21.11", "java": ">=21", "fabric-api": "*" }
+}
