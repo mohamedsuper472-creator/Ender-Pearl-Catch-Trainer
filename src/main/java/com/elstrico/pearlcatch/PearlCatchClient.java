@@ -1,4 +1,36 @@
-private boolean running = false;
+package com.elstrico.pearlcatch;
+
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
+import net.minecraft.entity.projectile.thrown.EnderPearlEntity;
+import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Vec3d;
+import org.lwjgl.glfw.GLFW;
+
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
+import java.util.UUID;
+
+public final class PearlCatchClient implements ClientModInitializer {
+    private static final long RESULT_DURATION = 3_000_000_000L;
+    private static final long MAX_ATTEMPT = 30_000_000_000L;
+    // The pearl must be clearly travelling upward, not horizontally or toward the floor.
+    private static final double MIN_UPWARD_RATIO = 0.30;
+    private static final double MIN_UPWARD_SPEED = 0.12;
+
+    private KeyBinding toggleKey;
+    private boolean enabled = false;
+    private boolean running = false;
     private final Set<UUID> seenPearls = new HashSet<>();
     private UUID trackedPearl;
     private Vec3d throwPosition;
@@ -126,3 +158,15 @@ private boolean running = false;
                 ? "Tooo Slow"
                 : String.format(Locale.ROOT, "%.3fs", seconds);
         } else if (resultText != null && System.nanoTime() < resultUntilNanos) {
+            label = resultText;
+        } else {
+            return; // No permanent ON text above the hearts.
+        }
+
+        int color = (label.equals("Failed") || label.equals("Tooo Slow"))
+            ? 0xFFFF5555 : 0xFFFFFFFF;
+        int x = (ctx.getScaledWindowWidth() - mc.textRenderer.getWidth(label)) / 2;
+        int y = ctx.getScaledWindowHeight() - 64;
+        ctx.drawTextWithShadow(mc.textRenderer, label, x, y, color);
+    }
+}
