@@ -1,5 +1,5 @@
 
-name: Build Ender Pearl Catch
+name: Build Ender Pearl Catch JAR
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
 
 jobs:
   build:
+    name: Build JAR
     runs-on: ubuntu-latest
 
     steps:
@@ -25,40 +26,49 @@ jobs:
         with:
           gradle-version: '9.2.1'
 
-      - name: Build Mod
-        run: gradle build --no-daemon --stacktrace
+      - name: Build Fabric JAR
+        run: gradle clean build --no-daemon
 
-      - name: Diagnose JAR Files
+      - name: Verify and Prepare JAR
         shell: bash
         run: |
-          echo "=== Repository files ==="
-          find . -maxdepth 4 -type f \
-            -not -path './.git/*' | sort
+          mkdir -p release
+          FOUND=0
 
-          echo "=== JAR files ==="
-          find . -type f -name '*.jar' \
-            -not -path './.gradle/*' \
-            -not -path './.git/*' \
-            -print
+          while IFS= read -r -d '' file; do
+            case "$file" in
+              *-sources.jar|*-dev.jar|*-javadoc.jar)
+                continue
+                ;;
+            esac
 
-          echo "=== Checking Fabric metadata ==="
-          find . -type f -name '*.jar' \
-            -not -path './.gradle/*' \
-            -not -path './.git/*' \
-            -print0 | while IFS= read -r -d '' file; do
-              echo "Checking: $file"
-              if unzip -l "$file" | grep -q 'fabric.mod.json'; then
-                echo "FOUND FABRIC MOD: $file"
-                unzip -p "$file" fabric.mod.json
-              else
-                echo "No fabric.mod.json in this JAR"
-              fi
-            done
+            if ! unzip -Z1 "$file" | grep -Fxq \
+              'fabric.mod.json'; then
+              continue
+            fi
 
-      - name: Upload Build Output
+            if ! unzip -Z1 "$file" | grep -Eq \
+              '\.class$'; then
+              continue
+            fi
+
+            cp "$file" release/EnderPearlCatch.jar
+            FOUND=1
+            break
+          done < <(find build/libs -maxdepth 1 \
+            -type f -name '*.jar' -print0)
+
+          if [ "$FOUND" -ne 1 ]; then
+            echo "ERROR: No valid Fabric JAR found"
+            exit 1
+          fi
+
+          echo "JAR successfully built"
+
+      - name: Upload Final JAR
         uses: actions/upload-artifact@v4
         with:
-          name: EnderPearlCatch-Debug
-          path: |
-            **/build/libs/*.jar
-          if-no-files-found: warn
+          name: EnderPearlCatch-JAR
+          path: release/EnderPearlCatch.jar
+          if-no-files-found: error
+          retention-days: 30
