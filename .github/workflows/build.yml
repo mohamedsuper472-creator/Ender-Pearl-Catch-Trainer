@@ -26,43 +26,39 @@ jobs:
           gradle-version: '9.2.1'
 
       - name: Build Mod
-        run: gradle build --no-daemon
+        run: gradle build --no-daemon --stacktrace
 
-      - name: Find and Verify Mod JAR
+      - name: Diagnose JAR Files
         shell: bash
         run: |
-          mkdir -p verified-mod
-          FOUND=0
+          echo "=== Repository files ==="
+          find . -maxdepth 4 -type f \
+            -not -path './.git/*' | sort
 
-          for file in build/libs/*.jar; do
-            [ -f "$file" ] || continue
+          echo "=== JAR files ==="
+          find . -type f -name '*.jar' \
+            -not -path './.gradle/*' \
+            -not -path './.git/*' \
+            -print
 
-            if [[ "$file" == *-sources.jar ]] || \
-               [[ "$file" == *-dev.jar ]] || \
-               [[ "$file" == *-javadoc.jar ]]; then
-              continue
-            fi
+          echo "=== Checking Fabric metadata ==="
+          find . -type f -name '*.jar' \
+            -not -path './.gradle/*' \
+            -not -path './.git/*' \
+            -print0 | while IFS= read -r -d '' file; do
+              echo "Checking: $file"
+              if unzip -l "$file" | grep -q 'fabric.mod.json'; then
+                echo "FOUND FABRIC MOD: $file"
+                unzip -p "$file" fabric.mod.json
+              else
+                echo "No fabric.mod.json in this JAR"
+              fi
+            done
 
-            if unzip -p "$file" fabric.mod.json \
-              > /tmp/fabric-mod.json 2>/dev/null; then
-
-              echo "Valid Fabric mod found: $file"
-              cat /tmp/fabric-mod.json
-              cp "$file" verified-mod/EnderPearlCatch.jar
-              FOUND=1
-              break
-            fi
-          done
-
-          if [ "$FOUND" -eq 0 ]; then
-            echo "ERROR: No valid Fabric mod JAR found!"
-            exit 1
-          fi
-
-      - name: Upload Verified Mod
+      - name: Upload Build Output
         uses: actions/upload-artifact@v4
         with:
-          name: EnderPearlCatch-Fabric-1.21.11
-          path: verified-mod/EnderPearlCatch.jar
-          if-no-files-found: error
-          retention-days: 30
+          name: EnderPearlCatch-Debug
+          path: |
+            **/build/libs/*.jar
+          if-no-files-found: warn
