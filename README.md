@@ -1,7 +1,6 @@
-# Ender Pearl Catch Timer — Fabric 1.21.11
+# Ender Pearl Catch (Fabric 1.21.11)
+Client-side timer: O toggles ON/OFF. A newly thrown upward ender pearl starts the timer; an upward teleport after the pearl disappears ends it. White HUD above hearts/food; after 5 seconds shows Tooo Slow.
 
-Press **O** to enable/disable. When enabled, throwing your own ender pearl upwards starts a white HUD timer. The timer stops when your character teleports abruptly to a higher position, shortly after the tracked pearl disappears. More than five seconds shows **Tooo Slow**.
+Upload **all files and folders at the repository root** to GitHub. Run Actions > Build Ender Pearl Catch JAR > Run workflow. Download artifact and extract EnderPearlCatch.jar into Minecraft mods. Requires Fabric Loader, Fabric API and Java 21. Mod Menu is optional.
 
-This is a **client-side estimate of teleport completion**, not an authoritative server-side teleport event. Teleports caused by other mods/plugins can potentially trigger a false positive, and some server lag or unusual pearl trajectories may be missed. It does NOT stop on wind charge proximity. A Fabric server-side event hook would be needed for fully authoritative teleport detection.
-
-Build on GitHub: put the contents of this directory at repository root, open Actions > Build Ender Pearl Catch > Run workflow, and download the JAR artifact. Fabric API required.
+Note: Upward teleport detection is heuristic, not a verified server-side collision event. Not yet tested in a live Minecraft client.

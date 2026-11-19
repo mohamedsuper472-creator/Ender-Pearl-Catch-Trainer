@@ -1,8 +1,10 @@
-name: Build Ender Pearl Catch
+name: Build Ender Pearl Catch JAR
 on:
   push:
     branches: [main, master]
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,10 +17,35 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.2.1'
-      - name: Build mod
-        run: gradle build --no-daemon
+      - name: Verify source layout
+        shell: bash
+        run: |
+          test -f build.gradle || { echo 'Missing build.gradle at repository root'; exit 1; }
+          test -f src/main/resources/fabric.mod.json || { echo 'Missing src/main/resources/fabric.mod.json'; exit 1; }
+          test -f src/main/java/com/elstrico/pearlcatch/PearlCatchClient.java || { echo 'Missing PearlCatchClient.java'; exit 1; }
+      - name: Build
+        run: gradle clean build --no-daemon --stacktrace
+      - name: Verify and stage JAR
+        shell: bash
+        run: |
+          mkdir -p release
+          found=0
+          for jar in build/libs/*.jar; do
+            [[ -f "$jar" ]] || continue
+            [[ "$jar" == *-sources.jar || "$jar" == *-dev.jar || "$jar" == *-javadoc.jar ]] && continue
+            if unzip -Z1 "$jar" | grep -qx 'fabric.mod.json' && unzip -Z1 "$jar" | grep -q '^com/elstrico/pearlcatch/PearlCatchClient.class$'; then
+              cp "$jar" release/EnderPearlCatch.jar
+              found=1
+              break
+            fi
+          done
+          if [[ "$found" != 1 ]]; then
+            echo 'ERROR: Built JAR missing mod metadata or compiled client class.'
+            find build/libs -maxdepth 1 -type f -print || true
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
-          name: EnderPearlCatch-JAR
-          path: build/libs/*[0-9].jar
+          name: EnderPearlCatch-Fabric-1.21.11
+          path: release/EnderPearlCatch.jar
           if-no-files-found: error
