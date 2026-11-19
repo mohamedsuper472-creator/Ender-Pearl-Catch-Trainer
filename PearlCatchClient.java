@@ -2,82 +2,112 @@ package com.elstrico.pearlcatch;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.entity.Entity;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
 import net.minecraft.entity.projectile.thrown.EnderPearlEntity;
-import net.minecraft.entity.projectile.WindChargeEntity;
+import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Vec3d;
+import org.lwjgl.glfw.GLFW;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
-/** Client-side visual practice timer. Collision detection is proximity-based,
- * not authoritative projectile hit confirmation. */
 public final class PearlCatchClient implements ClientModInitializer {
+    private KeyBinding toggleKey;
+    private boolean enabled, running, finished;
     private final Set<UUID> seenPearls = new HashSet<>();
-    private final Set<UUID> seenCharges = new HashSet<>();
     private UUID trackedPearl;
-    private long startedAt;
-    private long stoppedAt;
-    private boolean running;
-    private boolean finished;
+    private Vec3d throwPosition, lastPosition;
+    private long startNanos, endNanos, resultNanos;
+    private int pearlMissingTicks;
 
     @Override public void onInitializeClient() {
+        toggleKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.enderpearlcatch.toggle", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_O,
+            KeyBinding.Category.MISC));
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT,
-            Identifier.of("enderpearlcatch", "timer"), (context, tickCounter) -> draw(context));
+            Identifier.of("enderpearlcatch", "timer"), (context, counter) -> render(context));
+    }
+
+    private void reset() {
+        running = false; finished = false; trackedPearl = null;
+        throwPosition = null; lastPosition = null; pearlMissingTicks = 0;
+        seenPearls.clear();
     }
 
     private void tick(MinecraftClient client) {
-        if (client.world == null || client.player == null) {
-            running = false; finished = false; trackedPearl = null;
-            seenPearls.clear(); seenCharges.clear(); return;
+        while (toggleKey.wasPressed()) {
+            enabled = !enabled;
+            reset();
+            if (client.player != null) client.player.sendMessage(
+                Text.literal("Ender Pearl Catch " + (enabled ? "ON" : "OFF")), true);
         }
-        Box area = client.player.getBoundingBox().expand(96);
-        var pearls = client.world.getEntitiesByClass(EnderPearlEntity.class, area, e -> true);
-        var charges = client.world.getEntitiesByClass(WindChargeEntity.class, area, e -> true);
-        Set<UUID> currentPearls = new HashSet<>();
+        if (client.player == null || client.world == null) { reset(); return; }
+        if (!enabled) { lastPosition = client.player.getPos(); return; }
+
+        Vec3d nowPosition = client.player.getPos();
+        Box searchArea = client.player.getBoundingBox().expand(128);
+        var pearls = client.world.getEntitiesByClass(EnderPearlEntity.class, searchArea, p -> true);
+        Set<UUID> visible = new HashSet<>();
+        boolean trackedVisible = false;
         for (EnderPearlEntity pearl : pearls) {
-            UUID id = pearl.getUuid(); currentPearls.add(id);
-            if (!seenPearls.contains(id) && pearl.getOwner() == client.player) {
+            UUID id = pearl.getUuid();
+            visible.add(id);
+            if (id.equals(trackedPearl)) trackedVisible = true;
+            if (!seenPearls.contains(id) && pearl.getOwner() != null
+                    && pearl.getOwner().getUuid().equals(client.player.getUuid())
+                    && pearl.getVelocity().y > 0.05) {
                 trackedPearl = id;
-                startedAt = System.nanoTime(); stoppedAt = 0;
+                throwPosition = nowPosition;
+                startNanos = System.nanoTime();
                 running = true; finished = false;
+                pearlMissingTicks = 0;
             }
         }
-        seenPearls.clear(); seenPearls.addAll(currentPearls);
-        Set<UUID> currentCharges = new HashSet<>();
-        for (WindChargeEntity charge : charges) {
-            UUID id = charge.getUuid(); currentCharges.add(id);
-            if (running && trackedPearl != null && charge.getOwner() == client.player) {
-                for (EnderPearlEntity pearl : pearls) {
-                    if (pearl.getUuid().equals(trackedPearl)
-                        && charge.squaredDistanceTo(pearl) < 0.55 * 0.55) {
-                        stoppedAt = System.nanoTime();
-                        running = false; finished = true;
-                        break;
-                    }
-                }
+        seenPearls.clear(); seenPearls.addAll(visible);
+
+        if (running && trackedPearl != null) {
+            if (trackedVisible) pearlMissingTicks = 0;
+            else pearlMissingTicks++;
+            // A catch ends only when the player's position is abruptly changed upwards.
+            // Missing pearl is supporting evidence that its teleport just resolved.
+            if (lastPosition != null && throwPosition != null
+                    && nowPosition.y > throwPosition.y + 1.5
+                    && nowPosition.distanceTo(lastPosition) > 3.0
+                    && pearlMissingTicks > 0 && pearlMissingTicks <= 12) {
+                endNanos = System.nanoTime();
+                resultNanos = endNanos;
+                running = false; finished = true;
+            }
+            if (System.nanoTime() - startNanos > 30_000_000_000L) {
+                running = false; finished = false; trackedPearl = null;
             }
         }
-        seenCharges.clear(); seenCharges.addAll(currentCharges);
-        if (running && System.nanoTime() - startedAt > 15_000_000_000L) {
-            running = false; finished = true; stoppedAt = System.nanoTime();
-        }
+        lastPosition = nowPosition;
     }
 
-    private void draw(DrawContext ctx) {
+    private void render(DrawContext ctx) {
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player == null || mc.options.hudHidden || (!running && !finished)) return;
-        double seconds = ((running ? System.nanoTime() : stoppedAt) - startedAt) / 1_000_000_000.0;
-        String line = seconds > 5 ? "Tooo Slow" : String.format(java.util.Locale.ROOT, "%.3fs", seconds);
-        int color = seconds > 5 ? 0xFFFF5555 : 0xFFFFFFFF;
-        int x = (ctx.getScaledWindowWidth() - mc.textRenderer.getWidth(line)) / 2;
+        if (!enabled || mc.player == null || mc.options.hudHidden) return;
+        if (finished && System.nanoTime() - resultNanos > 5_000_000_000L) finished = false;
+        String label;
+        int color = 0xFFFFFFFF;
+        if (running || finished) {
+            double seconds = ((running ? System.nanoTime() : endNanos) - startNanos) / 1_000_000_000.0;
+            label = seconds > 5.0 ? "Tooo Slow" : String.format(Locale.ROOT, "%.3fs", seconds);
+            if (seconds > 5.0) color = 0xFFFF5555;
+        } else label = "Ender Pearl Catch ON";
+        int x = (ctx.getScaledWindowWidth() - mc.textRenderer.getWidth(label)) / 2;
         int y = ctx.getScaledWindowHeight() - 64;
-        ctx.drawTextWithShadow(mc.textRenderer, line, x, y, color);
+        ctx.drawTextWithShadow(mc.textRenderer, label, x, y, color);
     }
 }

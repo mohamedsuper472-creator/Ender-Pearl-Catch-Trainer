@@ -1,11 +1,7 @@
-# Ender Pearl Catch Timer (Fabric 1.21.11)
+# Ender Pearl Catch Timer — Fabric 1.21.11
 
-Source project, not a compiled or tested JAR. Requires Java 21 and Gradle (or Gradle wrapper).
-Run `gradle build` and find the JAR in `build/libs`.
+Press **O** to enable/disable. When enabled, throwing your own ender pearl upwards starts a white HUD timer. The timer stops when your character teleports abruptly to a higher position, shortly after the tracked pearl disappears. More than five seconds shows **Tooo Slow**.
 
-- Timer starts when the local player's thrown ender pearl appears client-side.
-- Timer stops when a locally-owned wind charge comes within 0.55 blocks of the tracked pearl.
-- Timer is white, centered above health/hunger; after 5 seconds it displays red `Tooo Slow`.
-- New pearl resets the timer.
+This is a **client-side estimate of teleport completion**, not an authoritative server-side teleport event. Teleports caused by other mods/plugins can potentially trigger a false positive, and some server lag or unusual pearl trajectories may be missed. It does NOT stop on wind charge proximity. A Fabric server-side event hook would be needed for fully authoritative teleport detection.
 
-**Limitations:** Proximity is not guaranteed to mean an actual hit. This client-only prototype does not modify projectile physics or add the previously discussed transparent target / randomized positions / 10-attempt scoring. Client tick visibility and network latency affect the timing. Compile compatibility with Fabric 1.21.11 has not been verified.
+Build on GitHub: put the contents of this directory at repository root, open Actions > Build Ender Pearl Catch > Run workflow, and download the JAR artifact. Fabric API required.
