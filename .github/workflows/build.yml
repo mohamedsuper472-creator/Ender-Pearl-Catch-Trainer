@@ -1,5 +1,5 @@
 
-name: Build Ender Pearl Catch Mod
+name: Build Ender Pearl Catch
 
 on:
   push:
@@ -22,18 +22,47 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-
-      - name: Install Gradle
-        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.2.1'
 
       - name: Build Mod
         run: gradle build --no-daemon
 
-      - name: Upload JAR
+      - name: Find and Verify Mod JAR
+        shell: bash
+        run: |
+          mkdir -p verified-mod
+          FOUND=0
+
+          for file in build/libs/*.jar; do
+            [ -f "$file" ] || continue
+
+            if [[ "$file" == *-sources.jar ]] || \
+               [[ "$file" == *-dev.jar ]] || \
+               [[ "$file" == *-javadoc.jar ]]; then
+              continue
+            fi
+
+            if unzip -p "$file" fabric.mod.json \
+              > /tmp/fabric-mod.json 2>/dev/null; then
+
+              echo "Valid Fabric mod found: $file"
+              cat /tmp/fabric-mod.json
+              cp "$file" verified-mod/EnderPearlCatch.jar
+              FOUND=1
+              break
+            fi
+          done
+
+          if [ "$FOUND" -eq 0 ]; then
+            echo "ERROR: No valid Fabric mod JAR found!"
+            exit 1
+          fi
+
+      - name: Upload Verified Mod
         uses: actions/upload-artifact@v4
         with:
-          name: EnderPearlCatch-1.21.11
-          path: build/libs/*.jar
+          name: EnderPearlCatch-Fabric-1.21.11
+          path: verified-mod/EnderPearlCatch.jar
           if-no-files-found: error
+          retention-days: 30
